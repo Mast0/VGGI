@@ -1,14 +1,21 @@
-
-
 // Vertex shader
 const vertexShaderSource = `
 attribute vec3 vertex;
-uniform mat4 ModelViewProjectionMatrix;
+attribute vec3 normal;
+
+uniform mat4 ModelViewMatrix;
+uniform mat4 ProjectionMatrix;
+uniform mat3 NormalMatrix;
+
+varying vec3 vNormal;
+varying vec3 vPosition;
 
 void main() {
-    gl_Position = ModelViewProjectionMatrix * vec4(vertex,1.0);
+    vec4 vertexPos = ModelViewMatrix * vec4(vertex, 1.0);
+    vPosition = vertexPos.xyz;
+    vNormal = NormalMatrix * normal;
+    gl_Position = ProjectionMatrix * vertexPos;
 }`;
-
 
 // Fragment shader
 const fragmentShaderSource = `
@@ -19,6 +26,30 @@ const fragmentShaderSource = `
 #endif
 
 uniform vec4 color;
+uniform vec3 lightPosEye;
+
+varying vec3 vNormal;
+varying vec3 vPosition;
+
 void main() {
-    gl_FragColor = color;
+    vec3 N = normalize(vNormal);
+    vec3 L = normalize(lightPosEye - vPosition);
+
+    // Ambient
+    float ambientIntensity = 0.2;
+    vec3 ambient = color.rgb * ambientIntensity;
+
+    // Diffuse
+    float diffuseIntensity = max(dot(N, L), 0.0);
+    vec3 diffuse = color.rgb * diffuseIntensity;
+
+    // Specular
+    // Hint: take (0,0,1) direction vector as the vector pointing towards the viewer
+    vec3 V = vec3(0.0, 0.0, 1.0);
+    vec3 R = reflect(-L, N);
+    float specularIntensity = pow(max(dot(R, V), 0.0), 32.0);
+    vec3 specular = vec3(1.0, 1.0, 1.0) * specularIntensity;
+
+    vec3 finalColor = ambient + diffuse + specular;
+    gl_FragColor = vec4(finalColor, color.a);
 }`;

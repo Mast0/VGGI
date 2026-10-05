@@ -9,32 +9,27 @@ function deg2rad(angle) {
     return angle * Math.PI / 180;
 }
 
-
-
-
 // Constructor
 function ShaderProgram(name, program) {
-
     this.name = name;
     this.prog = program;
 
-    // Location of the attribute variable in the shader program.
+    // Location of the attribute variables in the shader program.
     this.iAttribVertex = -1;
+    this.iAttribNormal = -1;
     // Location of the uniform specifying a color for the primitive.
     this.iColor = -1;
-    // Location of the uniform matrix representing the combined transformation.
-    this.iModelViewProjectionMatrix = -1;
+    // Location of the uniform matrices
+    this.iModelViewMatrix = -1;
+    this.iProjectionMatrix = -1;
+    this.iNormalMatrix = -1;
+    this.iLightPosEye = -1;
 
     this.Use = function() {
         gl.useProgram(this.prog);
     }
 }
 
-
-/* Draws a colored cube, along with a set of coordinate axes.
- * (Note that the use of the above drawPrimitive function is not an efficient
- * way to draw with WebGL.  Here, the geometry is so simple that it doesn't matter.)
- */
 function draw() { 
     gl.clearColor(0,0,0,1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -51,21 +46,44 @@ function draw() {
     let matAccum0 = m4.multiply(rotateToPointZero, modelView );
     let matAccum1 = m4.multiply(translateToPointZero, matAccum0 );
         
-    /* Multiply the projection matrix times the modelview matrix to give the
-       combined transformation matrix, and send that to the shader program. */
-    let modelViewProjection = m4.multiply(projection, matAccum1 );
-
-    gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection );
+    /* Send matrices to the shader program */
+    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, matAccum1 );
+    gl.uniformMatrix4fv(shProgram.iProjectionMatrix, false, projection );
     
-    /* Draw the six faces of a cube, with different colors. */
-    gl.uniform4fv(shProgram.iColor, [1,1,0,1] );
+    // Normal matrix: inverse transpose of top-left 3x3 of ModelView
+    // As matAccum1 is just rotation and translation, we can extract the 3x3 part directly.
+    let normalMatrix = [
+        matAccum1[0], matAccum1[1], matAccum1[2],
+        matAccum1[4], matAccum1[5], matAccum1[6],
+        matAccum1[8], matAccum1[9], matAccum1[10]
+    ];
+    gl.uniformMatrix3fv(shProgram.iNormalMatrix, false, normalMatrix);
+
+    // Light source
+    let time = Date.now() * 0.001;
+    let radius = 2.0;
+    let lightWorld = [
+        radius * Math.cos(time), 
+        radius * Math.sin(time), 
+        1.0
+    ];
+    let lightPosEye = m4.transformPoint(matAccum1, lightWorld);
+    gl.uniform3fv(shProgram.iLightPosEye, lightPosEye);
+
+    // Surface color
+    gl.uniform4fv(shProgram.iColor, [0.0, 1.0, 0.5, 1.0] );
 
     surface.Draw();
 }
 
+function updateSurface() {
+    let uSteps = document.getElementById('uSteps').value;
+    let vSteps = document.getElementById('vSteps').value;
+    document.getElementById('uStepsValue').innerText = uSteps;
+    document.getElementById('vStepsValue').innerText = vSteps;
+    surface.BufferData(CreateSurfaceData());
+}
 
-
-/* Initialize the WebGL context. Called from init() */
 function initGL() {
     let prog = createProgram( gl, vertexShaderSource, fragmentShaderSource );
 
@@ -73,8 +91,12 @@ function initGL() {
     shProgram.Use();
 
     shProgram.iAttribVertex              = gl.getAttribLocation(prog, "vertex");
-    shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
+    shProgram.iAttribNormal              = gl.getAttribLocation(prog, "normal");
+    shProgram.iModelViewMatrix           = gl.getUniformLocation(prog, "ModelViewMatrix");
+    shProgram.iProjectionMatrix          = gl.getUniformLocation(prog, "ProjectionMatrix");
+    shProgram.iNormalMatrix              = gl.getUniformLocation(prog, "NormalMatrix");
     shProgram.iColor                     = gl.getUniformLocation(prog, "color");
+    shProgram.iLightPosEye               = gl.getUniformLocation(prog, "lightPosEye");
 
     surface = new Model('Surface');
     surface.BufferData(CreateSurfaceData());
@@ -82,15 +104,6 @@ function initGL() {
     gl.enable(gl.DEPTH_TEST);
 }
 
-
-/* Creates a program for use in the WebGL context gl, and returns the
- * identifier for that program.  If an error occurs while compiling or
- * linking the program, an exception of type Error is thrown.  The error
- * string contains the compilation or linking error.  If no error occurs,
- * the program identifier is the return value of the function.
- * The second and third parameters are strings that contain the
- * source code for the vertex shader and for the fragment shader.
- */
 function createProgram(gl, vShader, fShader) {
     let vsh = gl.createShader( gl.VERTEX_SHADER );
     gl.shaderSource(vsh,vShader);
@@ -114,10 +127,6 @@ function createProgram(gl, vShader, fShader) {
     return prog;
 }
 
-
-/**
- * initialization function that will be called when the page has loaded
- */
 function init() {
     let canvas;
     try {
@@ -141,7 +150,12 @@ function init() {
         return;
     }
 
-    spaceball = new TrackballRotator(canvas, draw, 0);
+    spaceball = new TrackballRotator(canvas, null, 0);
 
+    animate();
+}
+
+function animate() {
     draw();
+    window.requestAnimationFrame(animate);
 }
