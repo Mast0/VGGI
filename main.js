@@ -3,6 +3,7 @@
 let gl;
 let canvas;
 let surface;
+let lightSphere;
 let shProgram;
 let spaceball;
 
@@ -18,6 +19,8 @@ function ShaderProgram(name, program) {
     // Location of the attribute variables in the shader program.
     this.iAttribVertex = -1;
     this.iAttribNormal = -1;
+    this.iAttribTangent = -1;
+    this.iAttribTexCoords = -1;
     // Location of the uniform specifying a color for the primitive.
     this.iColor = -1;
     // Location of the uniform matrices
@@ -25,6 +28,11 @@ function ShaderProgram(name, program) {
     this.iProjectionMatrix = -1;
     this.iNormalMatrix = -1;
     this.iLightPosEye = -1;
+    this.iIsLight = -1;
+    // Texture units
+    this.iTMU0 = -1;
+    this.iTMU1 = -1;
+    this.iTMU2 = -1;
 
     this.Use = function () {
         gl.useProgram(this.prog);
@@ -50,7 +58,7 @@ function draw() {
 
     /* Set the values of the projection transformation */
     let aspect = canvas.height > 0 ? (canvas.width / canvas.height) : 1;
-    let projection = m4.perspective(Math.PI / 8, aspect, 8, 12);
+    let projection = m4.perspective(Math.PI / 8, aspect, 4, 20);
 
     /* Get the view matrix from the SimpleRotator object.*/
     let modelView = spaceball.getViewMatrix();
@@ -74,7 +82,7 @@ function draw() {
 
     // Light source
     let time = Date.now() * 0.001;
-    let radius = 2.0;
+    let radius = 1.7;
     let lightWorld = [
         radius * Math.cos(time),
         radius * Math.sin(time),
@@ -83,10 +91,23 @@ function draw() {
     let lightPosEye = m4.transformPoint(matAccum1, lightWorld);
     gl.uniform3fv(shProgram.iLightPosEye, lightPosEye);
 
-    // Surface color
-    gl.uniform4fv(shProgram.iColor, [0.0, 1.0, 0.5, 1.0]);
+    // Bind texture units
+    gl.uniform1i(shProgram.iTMU0, 0);
+    gl.uniform1i(shProgram.iTMU1, 1);
+    gl.uniform1i(shProgram.iTMU2, 2);
 
+    // Surface draw
+    gl.uniform1i(shProgram.iIsLight, 0);
+    gl.uniform4fv(shProgram.iColor, [1.0, 1.0, 1.0, 1.0]);
     surface.Draw();
+
+    // Draw light source sphere
+    let lightTranslate = m4.translation(lightWorld[0], lightWorld[1], lightWorld[2]);
+    let lightModelView = m4.multiply(matAccum1, lightTranslate);
+    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, lightModelView);
+    gl.uniform1i(shProgram.iIsLight, 1);
+    gl.uniform4fv(shProgram.iColor, [1.0, 0.95, 0.6, 1.0]);
+    lightSphere.Draw();
 }
 
 function updateSurface() {
@@ -105,14 +126,27 @@ function initGL() {
 
     shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
     shProgram.iAttribNormal = gl.getAttribLocation(prog, "normal");
+    shProgram.iAttribTangent = gl.getAttribLocation(prog, "tangent");
+    shProgram.iAttribTexCoords = gl.getAttribLocation(prog, "tex");
     shProgram.iModelViewMatrix = gl.getUniformLocation(prog, "ModelViewMatrix");
     shProgram.iProjectionMatrix = gl.getUniformLocation(prog, "ProjectionMatrix");
     shProgram.iNormalMatrix = gl.getUniformLocation(prog, "NormalMatrix");
     shProgram.iColor = gl.getUniformLocation(prog, "color");
     shProgram.iLightPosEye = gl.getUniformLocation(prog, "lightPosEye");
+    shProgram.iIsLight = gl.getUniformLocation(prog, "isLight");
+    shProgram.iTMU0 = gl.getUniformLocation(prog, "iTMU0");
+    shProgram.iTMU1 = gl.getUniformLocation(prog, "iTMU1");
+    shProgram.iTMU2 = gl.getUniformLocation(prog, "iTMU2");
 
     surface = new Model('Surface');
     surface.BufferData(CreateSurfaceData());
+
+    surface.idTextureDiffuse = LoadTexture("./textures/diffuse.jpg");
+    surface.idTextureSpecular = LoadTexture("./textures/specular.png");
+    surface.idTextureNormal = LoadTexture("./textures/normal.png");
+
+    lightSphere = new Model('LightSphere');
+    lightSphere.BufferData(CreateSphereData(0.08, 12, 16));
 
     gl.enable(gl.DEPTH_TEST);
 }
